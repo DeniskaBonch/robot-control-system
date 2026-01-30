@@ -23,6 +23,7 @@ const JOINT_LIMITS: Record<
 };
 
 const DANGER_ZONE = 5;
+const NEAR_ZONE = 10;
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
@@ -63,26 +64,40 @@ const RobotModel: React.FC<{
 
       dangerState[name] = danger;
 
+      const near =
+        !danger &&
+        (safe >= cfg.max - NEAR_ZONE ||
+          safe <= cfg.min + NEAR_ZONE);
+
       /* ===== Визуальный индикатор ===== */
-      const indName = `${name}_danger`;
+
+      const indName = `${name}_indicator`;
       let indicator = joint.getObjectByName(indName) as THREE.Mesh;
 
       if (!indicator) {
         indicator = new THREE.Mesh(
           new THREE.SphereGeometry(0.25, 16, 16),
           new THREE.MeshBasicMaterial({
-            color: "red",
             transparent: true,
             opacity: 0.9,
           })
         );
         indicator.name = indName;
-        indicator.position.set(0, 0.8, 0); // ВЫШЕ сустава
+        indicator.position.set(0, 0.8, 0);
         joint.add(indicator);
       }
 
-      indicator.visible = danger;
+      const mat = indicator.material as THREE.MeshBasicMaterial;
 
+      if (danger) {
+        mat.color.set("red");
+        indicator.visible = true;
+      } else if (near) {
+        mat.color.set("yellow");
+        indicator.visible = true;
+      } else {
+        indicator.visible = false;
+      }
     });
 
     onStateUpdate(realAngles, dangerState);
@@ -105,6 +120,10 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
     joint2: false,
     joint3: false,
   });
+
+  const isSafe = (Object.keys(danger) as JointName[]).every(
+    (j) => !danger[j]
+  );
 
   return (
     <>
@@ -133,7 +152,7 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
           top: 20,
           right: 20,
           width: 320,
-          background: "rgba(0,0,0,0.8)",
+          background: "rgba(0,0,0,0.85)",
           color: "white",
           padding: 12,
           borderRadius: 8,
@@ -142,11 +161,9 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
       >
         <strong>🤖 AI Monitor</strong>
 
-        {(Object.keys(danger) as JointName[]).every(
-          (j) => !danger[j]
-        ) && (
+        {isSafe && (
           <div style={{ marginTop: 8, color: "#7f7" }}>
-            Безопасная зона
+            🟢 Безопасная зона
           </div>
         )}
 
@@ -169,9 +186,9 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
 
         <hr />
 
-        <div>joint1: {angles.joint1}°</div>
-        <div>joint2: {angles.joint2}°</div>
-        <div>joint3: {angles.joint3}°</div>
+        <div>joint1 (real): {angles.joint1}°</div>
+        <div>joint2 (real): {angles.joint2}°</div>
+        <div>joint3 (real): {angles.joint3}°</div>
       </div>
     </>
   );

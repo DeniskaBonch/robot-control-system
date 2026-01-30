@@ -1,48 +1,34 @@
 import { useState } from "react";
 import { RobotView } from "./components/RobotView";
+import { analyzeRobotState } from "./logic/robotSafety";
+import type { JointName, RobotState } from "./logic/robotSafety";
 
-/* ===== Типы ===== */
-
-type JointName = "joint1" | "joint2" | "joint3";
-
-type JointsState = Record<JointName, number>;
-
-/* ===== Ограничения (ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ) ===== */
-
-const JOINT_LIMITS: Record<JointName, { min: number; max: number }> = {
-  joint1: { min: -90, max: 90 },
-  joint2: { min: -60, max: 60 },
-  joint3: { min: -45, max: 45 },
-};
-
-const clamp = (v: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, v));
-
-/* ===== App ===== */
 
 export default function App() {
-  const [joints, setJoints] = useState<JointsState>({
+  /* ===== Сырые углы от пользователя ===== */
+  const [rawJoints, setRawJoints] = useState<Record<JointName, number>>({
     joint1: 0,
     joint2: 0,
     joint3: 0,
   });
 
+  /* ===== Результат анализа безопасности ===== */
+  const safety = analyzeRobotState(rawJoints);
+
+  /* ===== Движение сустава ===== */
   const moveJoint = (name: JointName, delta: number) => {
-    setJoints((prev) => {
-      const nextRaw = prev[name] + delta;
-      const limits = JOINT_LIMITS[name];
+    setRawJoints((prev) => ({
+      ...prev,
+      [name]: prev[name] + delta,
+    }));
+  };
 
-      const nextClamped = clamp(
-        nextRaw,
-        limits.min,
-        limits.max
-      );
-
-      return {
-        ...prev,
-        [name]: nextClamped,
-      };
-    });
+  /* ===== Цвет состояния ===== */
+  const stateColor: Record<RobotState, string> = {
+    OK: "#4caf50",
+    WARNING: "#ff9800",
+    CRITICAL: "#ff5722",
+    BLOCKED: "#f44336",
   };
 
   return (
@@ -50,7 +36,7 @@ export default function App() {
       {/* ===== Панель управления ===== */}
       <div
         style={{
-          width: "300px",
+          width: "320px",
           padding: "20px",
           background: "#111",
           color: "#fff",
@@ -59,25 +45,58 @@ export default function App() {
       >
         <h2>Управление роботом</h2>
 
-        <button onClick={() => moveJoint("joint1", 5)}>Joint1 +</button>
-        <button onClick={() => moveJoint("joint1", -5)}>Joint1 -</button>
+        <div style={{ marginBottom: 12 }}>
+          <strong>Состояние:</strong>{" "}
+          <span style={{ color: stateColor[safety.state] }}>
+            {safety.state}
+          </span>
+        </div>
 
-        <br /><br />
+        {/* ===== Кнопки ===== */}
+        {(["joint1", "joint2", "joint3"] as JointName[]).map((j) => (
+          <div key={j} style={{ marginBottom: 12 }}>
+            <div>{j}</div>
+            <button onClick={() => moveJoint(j, 5)}>+</button>
+            <button onClick={() => moveJoint(j, -5)}>-</button>
+          </div>
+        ))}
 
-        <button onClick={() => moveJoint("joint2", 5)}>Joint2 +</button>
-        <button onClick={() => moveJoint("joint2", -5)}>Joint2 -</button>
+        <hr />
 
-        <br /><br />
+        {/* ===== Значения ===== */}
+        <div>
+          <strong>Запрошенные углы (UI)</strong>
+          <pre>{JSON.stringify(rawJoints, null, 2)}</pre>
 
-        <button onClick={() => moveJoint("joint3", 5)}>Joint3 +</button>
-        <button onClick={() => moveJoint("joint3", -5)}>Joint3 -</button>
+          <strong>Безопасные углы (робот)</strong>
+          <pre>{JSON.stringify(safety.safeJoints, null, 2)}</pre>
+        </div>
 
-        <pre>{JSON.stringify(joints, null, 2)}</pre>
+        {/* ===== Предупреждения ===== */}
+        {safety.warnings.length > 0 && (
+          <>
+            <hr />
+            <strong>AI предупреждения</strong>
+            {safety.warnings.map((w, i) => (
+              <div
+                key={i}
+                style={{
+                  marginTop: 6,
+                  padding: 6,
+                  background: "#ff4444",
+                  borderRadius: 4,
+                }}
+              >
+                ⚠ {w}
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* ===== 3D сцена ===== */}
       <div style={{ flex: 1 }}>
-        <RobotView joints={joints} />
+        <RobotView joints={safety.safeJoints} />
       </div>
     </div>
   );
