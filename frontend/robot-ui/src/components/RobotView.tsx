@@ -11,11 +11,7 @@ interface RobotViewProps {
   joints: Partial<Record<JointName, number>>;
 }
 
-interface RobotModelProps extends RobotViewProps {
-  onAIWarning: (msg: string) => void;
-}
-
-/* ===== Ограничения суставов ===== */
+/* ===== Ограничения ===== */
 
 const JOINT_LIMITS: Record<
   JointName,
@@ -26,46 +22,70 @@ const JOINT_LIMITS: Record<
   joint3: { min: -45, max: 45, axis: "z" },
 };
 
+const DANGER_ZONE = 5;
+
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
-/* ===== 3D модель робота ===== */
+/* ===== 3D модель ===== */
 
-const RobotModel: React.FC<RobotModelProps> = ({ joints, onAIWarning }) => {
+const RobotModel: React.FC<{
+  joints: Partial<Record<JointName, number>>;
+  onStateUpdate: (
+    angles: Record<JointName, number>,
+    dangers: Record<JointName, boolean>
+  ) => void;
+}> = ({ joints, onStateUpdate }) => {
   const group = useRef<THREE.Group>(null!);
   const gltf = useGLTF("/models/robot.glb");
 
-  const lastWarnings = useRef<Record<string, boolean>>({});
-
   useFrame(() => {
     if (!group.current) return;
+
+    const realAngles = {} as Record<JointName, number>;
+    const dangerState = {} as Record<JointName, boolean>;
 
     (Object.keys(JOINT_LIMITS) as JointName[]).forEach((name) => {
       const cfg = JOINT_LIMITS[name];
       const joint = group.current.getObjectByName(name);
       if (!joint) return;
 
-      const angleDeg = joints[name] ?? 0;
-      const safeAngle = clamp(angleDeg, cfg.min, cfg.max);
-      const angleRad = (safeAngle * Math.PI) / 180;
+      const input = joints[name] ?? 0;
+      const safe = clamp(input, cfg.min, cfg.max);
+      const rad = (safe * Math.PI) / 180;
 
-      joint.rotation[cfg.axis] = angleRad;
+      joint.rotation[cfg.axis] = rad;
+      realAngles[name] = safe;
 
-      const nearLimit =
-        Math.abs(safeAngle - cfg.min) < 5 ||
-        Math.abs(cfg.max - safeAngle) < 5;
+      const danger =
+        safe >= cfg.max - DANGER_ZONE ||
+        safe <= cfg.min + DANGER_ZONE;
 
-      if (nearLimit && !lastWarnings.current[name]) {
-        onAIWarning(
-          `Сустав ${name} близок к пределу (${safeAngle.toFixed(1)}°)`
+      dangerState[name] = danger;
+
+      /* ===== Визуальный индикатор ===== */
+      const indName = `${name}_danger`;
+      let indicator = joint.getObjectByName(indName) as THREE.Mesh;
+
+      if (!indicator) {
+        indicator = new THREE.Mesh(
+          new THREE.SphereGeometry(0.25, 16, 16),
+          new THREE.MeshBasicMaterial({
+            color: "red",
+            transparent: true,
+            opacity: 0.9,
+          })
         );
-        lastWarnings.current[name] = true;
+        indicator.name = indName;
+        indicator.position.set(0, 0.8, 0); // ВЫШЕ сустава
+        joint.add(indicator);
       }
 
-      if (!nearLimit) {
-        lastWarnings.current[name] = false;
-      }
+      indicator.visible = danger;
+
     });
+
+    onStateUpdate(realAngles, dangerState);
   });
 
   return <primitive ref={group} object={gltf.scene} />;
@@ -74,65 +94,84 @@ const RobotModel: React.FC<RobotModelProps> = ({ joints, onAIWarning }) => {
 /* ===== Основной компонент ===== */
 
 export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
-  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const [angles, setAngles] = useState<Record<JointName, number>>({
+    joint1: 0,
+    joint2: 0,
+    joint3: 0,
+  });
+
+  const [danger, setDanger] = useState<Record<JointName, boolean>>({
+    joint1: false,
+    joint2: false,
+    joint3: false,
+  });
 
   return (
     <>
       <Canvas
         style={{ width: "100vw", height: "100vh" }}
-        camera={{ position: [0, 5, 12], fov: 75, near: 0.01, far: 5000 }}
+        camera={{ position: [0, 5, 12], fov: 75 }}
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[10, 10, 5]} intensity={1} />
 
         <RobotModel
           joints={joints}
-          onAIWarning={(msg) =>
-            setAiWarnings((prev) =>
-              prev.includes(msg) ? prev : [...prev, msg]
-            )
-          }
+          onStateUpdate={(a, d) => {
+            setAngles(a);
+            setDanger(d);
+          }}
         />
 
         <OrbitControls />
       </Canvas>
 
-      {/* ===== AI Панель ===== */}
+      {/* ===== AI панель ===== */}
       <div
         style={{
           position: "fixed",
           top: 20,
           right: 20,
           width: 320,
-          background: "rgba(0,0,0,0.75)",
+          background: "rgba(0,0,0,0.8)",
           color: "white",
-          padding: "12px",
-          borderRadius: "8px",
+          padding: 12,
+          borderRadius: 8,
           fontFamily: "monospace",
-          zIndex: 1000,
         }}
       >
         <strong>🤖 AI Monitor</strong>
 
-        {aiWarnings.length === 0 && (
-          <div style={{ marginTop: 8, color: "#8f8" }}>
-            Безопасная траектория
+        {(Object.keys(danger) as JointName[]).every(
+          (j) => !danger[j]
+        ) && (
+          <div style={{ marginTop: 8, color: "#7f7" }}>
+            Безопасная зона
           </div>
         )}
 
-        {aiWarnings.map((w, i) => (
-          <div
-            key={i}
-            style={{
-              marginTop: 8,
-              padding: "6px",
-              background: "#ff4444",
-              borderRadius: "4px",
-            }}
-          >
-            ⚠ {w}
-          </div>
-        ))}
+        {(Object.keys(danger) as JointName[]).map(
+          (j) =>
+            danger[j] && (
+              <div
+                key={j}
+                style={{
+                  marginTop: 8,
+                  padding: 6,
+                  background: "#ff4444",
+                  borderRadius: 4,
+                }}
+              >
+                ⚠ {j} близок к пределу ({angles[j]}°)
+              </div>
+            )
+        )}
+
+        <hr />
+
+        <div>joint1: {angles.joint1}°</div>
+        <div>joint2: {angles.joint2}°</div>
+        <div>joint3: {angles.joint3}°</div>
       </div>
     </>
   );
