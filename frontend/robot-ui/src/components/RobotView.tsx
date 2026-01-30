@@ -12,19 +12,24 @@ type AIWarning = {
   message: string;
 };
 
-const [aiWarnings, setAiWarnings] = React.useState<string[]>([]);
+// УБРАТЬ useState отсюда - он должен быть внутри компонента
+// const [aiWarnings, setAiWarnings] = React.useState<string[]>([]);
 
 
 const JOINT_LIMITS = {
-  joint1: { min: -90, max: 90, axis: "y" },
-  joint2: { min: -60, max: 60, axis: "x" },
-  joint3: { min: -45, max: 45, axis: "z" },
+  joint1: { min: -90, max: 90, axis: "y" as const },
+  joint2: { min: -60, max: 60, axis: "x" as const },
+  joint3: { min: -45, max: 45, axis: "z" as const },
 } as const;
 
 type JointName = keyof typeof JOINT_LIMITS;
 
 interface RobotViewProps {
   joints: Partial<Record<JointName, number>>;
+}
+
+interface RobotModelProps extends RobotViewProps {
+  onAIWarning?: (msg: string) => void;
 }
 
 /* =======================
@@ -55,35 +60,35 @@ const SAFE_ZONE = {
    МОДЕЛЬ РОБОТА
 ======================= */
 
-const RobotModel: React.FC<RobotViewProps> = ({ joints }) => {
+const RobotModel: React.FC<RobotModelProps> = ({ joints, onAIWarning }) => {
   const group = useRef<THREE.Group>(null!);
   const gltf = useGLTF("/models/robot.glb");
   const lastWarnings = useRef<Record<string, boolean>>({});
   const analyzeTrajectory = (
-  joint: THREE.Object3D,
-  axis: "x" | "y" | "z",
-  nextAngleRad: number
-): string | null => {
-  const prev = joint.rotation[axis];
-  joint.rotation[axis] = nextAngleRad;
+    joint: THREE.Object3D,
+    axis: "x" | "y" | "z",
+    nextAngleRad: number
+  ): string | null => {
+    const prev = joint.rotation[axis];
+    joint.rotation[axis] = nextAngleRad;
 
-  const pos = new THREE.Vector3();
-  joint.getWorldPosition(pos);
+    const pos = new THREE.Vector3();
+    joint.getWorldPosition(pos);
 
-  joint.rotation[axis] = prev;
+    joint.rotation[axis] = prev;
 
-  const r = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
+    const r = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
 
-  if (
-    r > SAFE_ZONE.radius * 0.9 ||
-    pos.y < SAFE_ZONE.minY + 0.2 ||
-    pos.y > SAFE_ZONE.maxY - 0.2
-  ) {
-    return "Опасная траектория: приближение к границе безопасной зоны";
-  }
+    if (
+      r > SAFE_ZONE.radius * 0.9 ||
+      pos.y < SAFE_ZONE.minY + 0.2 ||
+      pos.y > SAFE_ZONE.maxY - 0.2
+    ) {
+      return "Опасная траектория: приближение к границе безопасной зоны";
+    }
 
-  return null;
-};
+    return null;
+  };
 
 
   // Текущие углы (в градусах)
@@ -108,6 +113,9 @@ const RobotModel: React.FC<RobotViewProps> = ({ joints }) => {
 
       if (warning && !lastWarnings.current[name]) {
         console.warn(`AI WARNING [${name}]:`, warning);
+        if (onAIWarning) {
+          onAIWarning(warning);
+        }
         lastWarnings.current[name] = true;
       }
 
@@ -152,29 +160,42 @@ const RobotModel: React.FC<RobotViewProps> = ({ joints }) => {
 ======================= */
 
 export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
+  // useState должен быть ВНУТРИ компонента
+  const [aiWarnings, setAiWarnings] = React.useState<string[]>([]);
+
+  const handleAIWarning = (msg: string) => {
+    setAiWarnings((prev) =>
+      prev.includes(msg) ? prev : [...prev, msg]
+    );
+  };
+
   return (
-    <Canvas
-      style={{ width: "100vw", height: "100vh" }}
-      camera={{
-        position: [0, 5, 12],
-        fov: 75,
-        near: 0.01,
-        far: 5000,
-      }}
-    >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
+    <>
+      {/* Опционально: можно добавить отображение предупреждений */}
+      {/* {aiWarnings.length > 0 && (
+        <div style={{ position: 'absolute', top: 10, left: 10, background: 'red', color: 'white', padding: 10 }}>
+          {aiWarnings.map((w, i) => <div key={i}>{w}</div>)}
+        </div>
+      )} */}
+      
+      <Canvas
+        style={{ width: "100vw", height: "100vh" }}
+        camera={{
+          position: [0, 5, 12],
+          fov: 75,
+          near: 0.01,
+          far: 5000,
+        }}
+      >
+        <ambientLight intensity={0.6} />
+        <directionalLight position={[10, 10, 5]} intensity={1} />
 
-      <RobotModel
-        joints={joints}
-        onAIWarning={(msg) =>
-          setAiWarnings((prev) =>
-            prev.includes(msg) ? prev : [...prev, msg]
-          )
-        }
-/>
+        <RobotModel
+          joints={joints}
+          onAIWarning={handleAIWarning}
+        />
 
-      <OrbitControls />
+        <OrbitControls />
             <mesh position={[0, (SAFE_ZONE.minY + SAFE_ZONE.maxY) / 2, 0]}>
         <cylinderGeometry
           args={[
@@ -191,6 +212,7 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
         />
       </mesh>
 
-    </Canvas>
+      </Canvas>
+    </>
   );
 };
