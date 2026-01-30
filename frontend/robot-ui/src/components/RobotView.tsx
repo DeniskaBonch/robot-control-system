@@ -22,8 +22,13 @@ const JOINT_LIMITS: Record<
   joint3: { min: -45, max: 45, axis: "z" },
 };
 
-const DANGER_ZONE = 5;
-const NEAR_ZONE = 10;
+/* ===== Скорости (°/s) ===== */
+
+const MAX_SPEED: Record<JointName, number> = {
+  joint1: 60,
+  joint2: 45,
+  joint3: 30,
+};
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
@@ -32,75 +37,51 @@ const clamp = (v: number, min: number, max: number) =>
 
 const RobotModel: React.FC<{
   joints: Partial<Record<JointName, number>>;
-  onStateUpdate: (
-    angles: Record<JointName, number>,
-    dangers: Record<JointName, boolean>
-  ) => void;
+  onStateUpdate: (angles: Record<JointName, number>) => void;
 }> = ({ joints, onStateUpdate }) => {
   const group = useRef<THREE.Group>(null!);
   const gltf = useGLTF("/models/robot.glb");
 
-  useFrame(() => {
+  const currentAngles = useRef<Record<JointName, number>>({
+    joint1: 0,
+    joint2: 0,
+    joint3: 0,
+  });
+
+  useFrame((_, delta) => {
     if (!group.current) return;
 
-    const realAngles = {} as Record<JointName, number>;
-    const dangerState = {} as Record<JointName, boolean>;
+    const reported = {} as Record<JointName, number>;
 
     (Object.keys(JOINT_LIMITS) as JointName[]).forEach((name) => {
       const cfg = JOINT_LIMITS[name];
       const joint = group.current.getObjectByName(name);
       if (!joint) return;
 
-      const input = joints[name] ?? 0;
-      const safe = clamp(input, cfg.min, cfg.max);
-      const rad = (safe * Math.PI) / 180;
+      const target = clamp(
+        joints[name] ?? 0,
+        cfg.min,
+        cfg.max
+      );
 
-      joint.rotation[cfg.axis] = rad;
-      realAngles[name] = safe;
+      const current = currentAngles.current[name];
+      const maxStep = MAX_SPEED[name] * delta;
 
-      const danger =
-        safe >= cfg.max - DANGER_ZONE ||
-        safe <= cfg.min + DANGER_ZONE;
+      let next = current;
 
-      dangerState[name] = danger;
-
-      const near =
-        !danger &&
-        (safe >= cfg.max - NEAR_ZONE ||
-          safe <= cfg.min + NEAR_ZONE);
-
-      /* ===== Визуальный индикатор ===== */
-
-      const indName = `${name}_indicator`;
-      let indicator = joint.getObjectByName(indName) as THREE.Mesh;
-
-      if (!indicator) {
-        indicator = new THREE.Mesh(
-          new THREE.SphereGeometry(0.25, 16, 16),
-          new THREE.MeshBasicMaterial({
-            transparent: true,
-            opacity: 0.9,
-          })
-        );
-        indicator.name = indName;
-        indicator.position.set(0, 0.8, 0);
-        joint.add(indicator);
-      }
-
-      const mat = indicator.material as THREE.MeshBasicMaterial;
-
-      if (danger) {
-        mat.color.set("red");
-        indicator.visible = true;
-      } else if (near) {
-        mat.color.set("yellow");
-        indicator.visible = true;
+      if (Math.abs(target - current) <= maxStep) {
+        next = target;
       } else {
-        indicator.visible = false;
+        next += Math.sign(target - current) * maxStep;
       }
+
+      currentAngles.current[name] = next;
+      reported[name] = Math.round(next);
+
+      joint.rotation[cfg.axis] = (next * Math.PI) / 180;
     });
 
-    onStateUpdate(realAngles, dangerState);
+    onStateUpdate(reported);
   });
 
   return <primitive ref={group} object={gltf.scene} />;
@@ -115,16 +96,6 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
     joint3: 0,
   });
 
-  const [danger, setDanger] = useState<Record<JointName, boolean>>({
-    joint1: false,
-    joint2: false,
-    joint3: false,
-  });
-
-  const isSafe = (Object.keys(danger) as JointName[]).every(
-    (j) => !danger[j]
-  );
-
   return (
     <>
       <Canvas
@@ -136,22 +107,19 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
 
         <RobotModel
           joints={joints}
-          onStateUpdate={(a, d) => {
-            setAngles(a);
-            setDanger(d);
-          }}
+          onStateUpdate={setAngles}
         />
 
         <OrbitControls />
       </Canvas>
 
-      {/* ===== AI панель ===== */}
+      {/* ===== Панель ===== */}
       <div
         style={{
           position: "fixed",
           top: 20,
           right: 20,
-          width: 320,
+          width: 300,
           background: "rgba(0,0,0,0.85)",
           color: "white",
           padding: 12,
@@ -159,36 +127,11 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
           fontFamily: "monospace",
         }}
       >
-        <strong>🤖 AI Monitor</strong>
-
-        {isSafe && (
-          <div style={{ marginTop: 8, color: "#7f7" }}>
-            🟢 Безопасная зона
-          </div>
-        )}
-
-        {(Object.keys(danger) as JointName[]).map(
-          (j) =>
-            danger[j] && (
-              <div
-                key={j}
-                style={{
-                  marginTop: 8,
-                  padding: 6,
-                  background: "#ff4444",
-                  borderRadius: 4,
-                }}
-              >
-                ⚠ {j} близок к пределу ({angles[j]}°)
-              </div>
-            )
-        )}
-
+        <strong>⚙ Servo feedback</strong>
         <hr />
-
-        <div>joint1 (real): {angles.joint1}°</div>
-        <div>joint2 (real): {angles.joint2}°</div>
-        <div>joint3 (real): {angles.joint3}°</div>
+        <div>joint1: {angles.joint1}°</div>
+        <div>joint2: {angles.joint2}°</div>
+        <div>joint3: {angles.joint3}°</div>
       </div>
     </>
   );
