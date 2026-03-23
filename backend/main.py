@@ -64,18 +64,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
                     continue
 
-            if command.get("type") == "move":
-                try:
-                    robot.move_joint(
-                        joint=command["joint"],
-                        delta=command["delta"]
-                    )
-                except ValueError as e:
-                    await manager.send_personal(
-                        json.dumps({"error": str(e)}),
-                        websocket
-                    )
-                    continue
             warnings = ai.analyze(command, robot.get_state())
 
             if warnings:

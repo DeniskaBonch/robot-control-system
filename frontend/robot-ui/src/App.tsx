@@ -1,29 +1,54 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { RobotView } from "./components/RobotView";
 import { analyzeRobotState } from "./logic/robotSafety";
 import type { JointName, RobotState } from "./logic/robotSafety";
-
+import { connectWS, sendCommand } from "./services/ws";
 
 export default function App() {
-  /* ===== Сырые углы от пользователя ===== */
-  const [rawJoints, setRawJoints] = useState<Record<JointName, number>>({
+  /* ===== Реальное состояние от backend ===== */
+  const [realJoints, setRealJoints] = useState<Record<JointName, number>>({
     joint1: 0,
     joint2: 0,
     joint3: 0,
   });
 
-  /* ===== Результат анализа безопасности ===== */
-  const safety = analyzeRobotState(rawJoints);
+  /* ===== AI предупреждения ===== */
+  const [serverWarnings, setServerWarnings] = useState<string[]>([]);
 
-  /* ===== Движение сустава ===== */
+  /* ===== WebSocket ===== */
+  useEffect(() => {
+    connectWS((data) => {
+      // состояние робота
+      if (data.joints) {
+        setRealJoints(data.joints);
+      }
+
+      // AI предупреждения
+      if (data.joints) {
+        setRealJoints(data.joints);
+
+        setServerWarnings([]);
+      }
+
+      // Safety ошибки
+      if (data.type === "SAFETY_ALERT") {
+        setServerWarnings((prev) => [...prev, data.message]);
+      }
+    });
+  }, []);
+
+  /* ===== ВАЖНО: анализируем РЕАЛЬНЫЕ данные ===== */
+  const safety = analyzeRobotState(realJoints);
+
+  /* ===== Отправка команды ===== */
   const moveJoint = (name: JointName, delta: number) => {
-    setRawJoints((prev) => ({
-      ...prev,
-      [name]: prev[name] + delta,
-    }));
+    sendCommand({
+      type: "move",
+      joint: name,
+      delta,
+    });
   };
 
-  /* ===== Цвет состояния ===== */
   const stateColor: Record<RobotState, string> = {
     OK: "#4caf50",
     WARNING: "#ff9800",
@@ -33,7 +58,7 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
-      {/* ===== Панель управления ===== */}
+      {/* ===== ПАНЕЛЬ ===== */}
       <div
         style={{
           width: "320px",
@@ -52,7 +77,7 @@ export default function App() {
           </span>
         </div>
 
-        {/* ===== Кнопки ===== */}
+        {/* ===== КНОПКИ ===== */}
         {(["joint1", "joint2", "joint3"] as JointName[]).map((j) => (
           <div key={j} style={{ marginBottom: 12 }}>
             <div>{j}</div>
@@ -63,21 +88,42 @@ export default function App() {
 
         <hr />
 
-        {/* ===== Значения ===== */}
+        {/* ===== ДАННЫЕ ===== */}
         <div>
-          <strong>Запрошенные углы (UI)</strong>
-          <pre>{JSON.stringify(rawJoints, null, 2)}</pre>
+          <strong>Реальные углы (backend)</strong>
+          <pre>{JSON.stringify(realJoints, null, 2)}</pre>
 
-          <strong>Безопасные углы (робот)</strong>
+          <strong>Безопасные (UI)</strong>
           <pre>{JSON.stringify(safety.safeJoints, null, 2)}</pre>
         </div>
 
-        {/* ===== Предупреждения ===== */}
+        {/* ===== ЛОКАЛЬНЫЕ предупреждения ===== */}
         {safety.warnings.length > 0 && (
           <>
             <hr />
-            <strong>AI предупреждения</strong>
+            <strong>Локальный анализ</strong>
             {safety.warnings.map((w, i) => (
+              <div
+                key={i}
+                style={{
+                  marginTop: 6,
+                  padding: 6,
+                  background: "#ff9800",
+                  borderRadius: 4,
+                }}
+              >
+                ⚠ {w}
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* ===== СЕРВЕР ===== */}
+        {serverWarnings.length > 0 && (
+          <>
+            <hr />
+            <strong>AI (сервер)</strong>
+            {serverWarnings.map((w, i) => (
               <div
                 key={i}
                 style={{
@@ -87,16 +133,16 @@ export default function App() {
                   borderRadius: 4,
                 }}
               >
-                ⚠ {w}
+                {w}
               </div>
             ))}
           </>
         )}
       </div>
 
-      {/* ===== 3D сцена ===== */}
+      {/* ===== 3D ===== */}
       <div style={{ flex: 1 }}>
-        <RobotView joints={safety.safeJoints} />
+        <RobotView joints={realJoints} />
       </div>
     </div>
   );

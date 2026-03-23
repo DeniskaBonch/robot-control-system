@@ -27,7 +27,7 @@ export const JOINT_LIMITS: Record<JointName, JointLimits> = {
   joint3: { min: -45, max: 45 },
 };
 
-const WARNING_ZONE = 5; // градусов до предела
+const WARNING_ZONE = 15; // градусов до предела
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));

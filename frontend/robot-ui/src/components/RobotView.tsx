@@ -19,15 +19,15 @@ const JOINT_LIMITS: Record<
 > = {
   joint1: { min: -90, max: 90, axis: "y" },
   joint2: { min: -60, max: 60, axis: "x" },
-  joint3: { min: -45, max: 45, axis: "z" },
+  joint3: { min: -45, max: 45, axis: "x" },
 };
 
 /* ===== Скорости (°/s) ===== */
 
 const MAX_SPEED: Record<JointName, number> = {
-  joint1: 60,
-  joint2: 45,
-  joint3: 30,
+  joint1: 10,
+  joint2: 10,
+  joint3: 10,
 };
 
 const clamp = (v: number, min: number, max: number) =>
@@ -58,11 +58,7 @@ const RobotModel: React.FC<{
       const joint = group.current.getObjectByName(name);
       if (!joint) return;
 
-      const target = clamp(
-        joints[name] ?? 0,
-        cfg.min,
-        cfg.max
-      );
+      const target = clamp(joints[name] ?? 0, cfg.min, cfg.max);
 
       const current = currentAngles.current[name];
       const maxStep = MAX_SPEED[name] * delta;
@@ -99,16 +95,13 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints }) => {
   return (
     <>
       <Canvas
-        style={{ width: "100vw", height: "100vh" }}
+        style={{ width: "100vw", height: "100vh", background: "#aca9a9" }}
         camera={{ position: [0, 5, 12], fov: 75 }}
       >
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
+        <ambientLight intensity={10} />
+        <directionalLight position={[10, 100, 500]} intensity={1} />
 
-        <RobotModel
-          joints={joints}
-          onStateUpdate={setAngles}
-        />
+        <RobotModel joints={joints} onStateUpdate={setAngles} />
 
         <OrbitControls />
       </Canvas>
