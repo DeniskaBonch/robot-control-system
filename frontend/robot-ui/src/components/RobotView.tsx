@@ -27,15 +27,25 @@ const JOINT_LABELS: Record<JointName, string> = {
   joint4: "Запястье",
 };
 
+const FINGER_CONFIG: Record<string, { axis: "x" | "y" | "z"; angle: number }> =
+  {
+    finger01: { axis: "z", angle: -0.785 },
+    finger02: { axis: "x", angle: -0.785 },
+    finger03: { axis: "z", angle: 0.785 },
+    finger04: { axis: "x", angle: 0.785 },
+  };
+
 const SPEED = 25;
+const GRIPPER_SPEED = 1.5;
 const ALL_JOINTS = Object.keys(JOINT_LIMITS) as JointName[];
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
 const RobotModel: React.FC<{
   joints: Partial<Record<JointName, number>>;
+  gripper: number;
   onAnglesUpdate: (a: Record<JointName, number>) => void;
-}> = ({ joints, onAnglesUpdate }) => {
+}> = ({ joints, gripper, onAnglesUpdate }) => {
   const group = useRef<THREE.Group>(null!);
   const gltf = useGLTF("/models/robot.glb");
   const current = useRef<Record<JointName, number>>(
@@ -44,11 +54,16 @@ const RobotModel: React.FC<{
       number
     >,
   );
+  const currentGripper = useRef(0);
+  const fingerBase = useRef<
+    Record<string, { x: number; y: number; z: number }>
+  >({});
 
   useFrame((_, delta) => {
     if (!group.current) return;
     const reported = {} as Record<JointName, number>;
 
+    // суставы — твой оригинальный код
     ALL_JOINTS.forEach((name) => {
       const obj = group.current.getObjectByName(name);
       if (!obj) return;
@@ -66,6 +81,34 @@ const RobotModel: React.FC<{
     });
 
     onAnglesUpdate(reported);
+
+    // хват — интерполяция
+    const gripTarget = clamp(gripper, 0, 1);
+    const gripCur = currentGripper.current;
+    const gripMaxStep = GRIPPER_SPEED * delta;
+    const gripDiff = gripTarget - gripCur;
+    const gripNext =
+      Math.abs(gripDiff) <= gripMaxStep
+        ? gripTarget
+        : gripCur + Math.sign(gripDiff) * gripMaxStep;
+    currentGripper.current = gripNext;
+
+    Object.entries(FINGER_CONFIG).forEach(([name, cfg]) => {
+      const obj = group.current.getObjectByName(name);
+      if (!obj) return;
+      if (!fingerBase.current[name]) {
+        fingerBase.current[name] = {
+          x: obj.rotation.x,
+          y: obj.rotation.y,
+          z: obj.rotation.z,
+        };
+      }
+      const base = fingerBase.current[name];
+      obj.rotation.x = base.x;
+      obj.rotation.y = base.y;
+      obj.rotation.z = base.z;
+      obj.rotation[cfg.axis] = base[cfg.axis] + cfg.angle * gripNext;
+    });
   });
 
   return <primitive ref={group} object={gltf.scene} />;
@@ -104,7 +147,11 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints, gripper }) => {
           infiniteGrid
         />
 
-        <RobotModel joints={joints} onAnglesUpdate={setAngles} />
+        <RobotModel
+          joints={joints}
+          gripper={gripper}
+          onAnglesUpdate={setAngles}
+        />
         <OrbitControls makeDefault />
 
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
@@ -115,7 +162,6 @@ export const RobotView: React.FC<RobotViewProps> = ({ joints, gripper }) => {
         </GizmoHelper>
       </Canvas>
 
-      {/* Servo feedback — поверх Canvas */}
       <div
         style={{
           position: "fixed",
