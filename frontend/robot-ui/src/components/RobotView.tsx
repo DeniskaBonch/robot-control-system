@@ -29,10 +29,10 @@ const JOINT_LABELS: Record<JointName, string> = {
 
 const FINGER_CONFIG: Record<string, { axis: "x" | "y" | "z"; angle: number }> =
   {
-    finger01: { axis: "z", angle: -0.785 },
-    finger02: { axis: "x", angle: -0.785 },
-    finger03: { axis: "z", angle: 0.785 },
-    finger04: { axis: "x", angle: 0.785 },
+    finger01: { axis: "z", angle: -0.35 },
+    finger02: { axis: "x", angle: -0.35 },
+    finger03: { axis: "z", angle: 0.35 },
+    finger04: { axis: "x", angle: 0.35 },
   };
 
 const SPEED = 25;
@@ -107,7 +107,7 @@ const RobotModel: React.FC<{
       obj.rotation.x = base.x;
       obj.rotation.y = base.y;
       obj.rotation.z = base.z;
-      obj.rotation[cfg.axis] = base[cfg.axis] + cfg.angle * gripNext;
+      obj.rotation[cfg.axis] = base[cfg.axis] + cfg.angle * (gripNext * 2 - 1);
     });
   });
 

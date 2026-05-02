@@ -18,7 +18,7 @@ class RobotSimulator:
     def __init__(self):
         self.state = RobotState(
             joints={j: 0.0 for j in JOINT_LIMITS},
-            gripper=0.0,
+            gripper=0.5,
             status="IDLE",
         )
 

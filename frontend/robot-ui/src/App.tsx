@@ -40,7 +40,7 @@ export default function App() {
         number
       >,
   );
-  const [gripper, setGripper] = useState(0);
+  const [gripper, setGripper] = useState(0.5);
   const [robotStatus, setRobotStatus] = useState("IDLE");
   const [wsStatus, setWsStatus] = useState<WsStatus>("disconnected");
   const [log, setLog] = useState<LogEntry[]>([]);
