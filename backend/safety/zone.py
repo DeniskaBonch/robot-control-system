@@ -1,8 +1,10 @@
 from typing import Dict, Tuple
 
-# joint -> (min, max)
+# Программные зоны безопасности (чуть уже аппаратных лимитов)
 SAFE_ZONES: Dict[str, Tuple[float, float]] = {
-    "joint1": (-180, 90),
-    "joint2": (-90, 60),
-    "joint3": (-135, 135),
+    "joint0": (-170, 170),
+    "joint1": (-85,  85),
+    "joint2": (-120, 120),
+    "joint3": (-85,  85),
+    "joint4": (-170, 170),
 }
