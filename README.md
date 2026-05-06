@@ -35,3 +35,20 @@ npm run dev
 ros2 topic echo /robot/joint_states
 
 ---
+
+RViz
+cd C:\pixi_ws
+pixi shell
+call C:\pixi_ws\ros2-windows\local_setup.bat
+call C:\pixi_ws\install\local_setup.bat
+
+echo set AMENT_PREFIX_PATH=C:\pixi_ws\install\robot_description;%AMENT_PREFIX_PATH% > C:\pixi_ws\install\robot_description\local_setup.bat
+call C:\pixi_ws\install\robot_description\local_setup.bat
+set AMENT_PREFIX_PATH=C:\pixi_ws\install\robot_description;C:\pixi_ws\install\robot_controller;C:\pixi_ws\ros2-windows
+ros2 launch robot_description display.launch.py
+
+Добавить робота
+"Description Topic" установи в /robot_description
+Измени map на base_link.
+
+запускать все вместе
